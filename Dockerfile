@@ -1,16 +1,10 @@
 FROM ubuntu:18.04
 
-MAINTAINER OwenYang <coolsealtw@hotmail.com>
-
-ENV MAVEN_VERSION=3.2.5
-ENV JAVA_VERSION_MAJOR=6
-ENV JAVA_VERSION_MINOR=45
-ENV JAVA_VERSION_BUILD=45
-
-ENV ANT_VERSION 1.9.4
-
 ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
+
+# Apache ANT 1.9.4
+ENV ANT_VERSION 1.9.4
 
 RUN apt update
 RUN apt install wget -y
@@ -25,6 +19,12 @@ RUN tar -xzf apache-ant-${ANT_VERSION}-bin.tar.gz && \
 
 ENV ANT_HOME /opt/ant
 ENV PATH ${PATH}:/opt/ant/bin
+
+# Oracle Java6 JDK-1.6.0_45-b06
+ENV JAVA_VERSION_MAJOR=6
+ENV JAVA_VERSION_MINOR=45
+ENV JAVA_VERSION_BUILD=b06
+
 
 ENV JAVA_HOME /opt/java
 ENV PATH $JAVA_HOME/bin:$PATH
