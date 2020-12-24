@@ -1,40 +1,79 @@
-FROM ubuntu:18.04
+FROM centos:centos7
+LABEL name="CentOS 7" vendor="OOO BFT"
+MAINTAINER Pavel V. Golovko
 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
+#ENV LANG en_US.UTF-8
+#ENV LANGUAGE en_US:en
 
-# Apache ANT 1.9.4
-ENV ANT_VERSION 1.9.4
+ENV SERVER_REPO="http://srv-nexus:8081" \
+	TEMP_DIR="/opt/temp" \
+	USER_HOME="/home/work-user" \
+	JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk
+ENV PATH=${PATH}:${JAVA_HOME}/bin \
+	CLASSPATH=.:${JAVA_HOME}/lib:${JAVA_HOME}/lib/tools.jar
 
-RUN apt update
-RUN apt install wget -y
+#SSH-keys for local user "work-user"
+ADD ${SERVER_REPO}/repository/files_for_devops/all_files/ssh/tester/id_rsa ${TEMP_DIR}/
+ADD ${SERVER_REPO}/repository/files_for_devops/all_files/ssh/tester/id_rsa.pub ${TEMP_DIR}/
+ADD ${SERVER_REPO}/repository/files_for_devops/all_files/ssh/tester/known_hosts ${TEMP_DIR}/
 
-WORKDIR /tmp/apache-ant-${ANT_VERSION}
-COPY ./apache-ant-${ANT_VERSION}-bin.tar.gz .
+#Fonts for centos 7
+ADD ${SERVER_REPO}/repository/files_for_devops/all_files/msttcore-fonts-2.0-2.noarch.rpm ${TEMP_DIR}/
+#Git config
+ADD ./.gitconfig ${TEMP_DIR}/
+#Bamboo files
+ADD bamboo-agent.sh /opt/
+ADD bamboo-capabilities.properties /opt/bamboo-agent/bin/bamboo-capabilities.properties
 
-#RUN wget -q https://archive.apache.org/dist/ant/binaries/apache-ant-${ANT_VERSION}-bin.tar.gz && \
-RUN tar -xzf apache-ant-${ANT_VERSION}-bin.tar.gz && \
-    mv apache-ant-${ANT_VERSION} /opt/ant && \
-    rm apache-ant-${ANT_VERSION}-bin.tar.gz
+#Delete default repositories, install srv-nexus repository
+RUN rm -f /etc/yum.repos.d/* && \
+    touch /etc/yum.repos.d/srv-nexus.repo && \
+    echo "[nexusrepo]" >> /etc/yum.repos.d/srv-nexus.repo && \
+    echo "name=Nexus Repository" >> /etc/yum.repos.d/srv-nexus.repo && \
+    echo "baseurl=http://srv-nexus:8081/repository/yum-nexus-group-cos7/" >> /etc/yum.repos.d/srv-nexus.repo && \
+    echo "enabled=1" >> /etc/yum.repos.d/srv-nexus.repo && \
+    echo "gpgcheck=0" >> /etc/yum.repos.d/srv-nexus.repo && \
+    echo "priority=1" >> /etc/yum.repos.d/srv-nexus.repo && \
+#Yum upgrade
+    yum makecache && \
+    yum upgrade -y && \
+#Install fonts
+    yum install -y ${TEMP_DIR}/msttcore-fonts-2.0-2.noarch.rpm && \
+#Language settings
+    localedef -i ru_RU -f UTF-8 ru_RU.UTF-8 && \
+    echo "LANG=\"ru_RU.UTF-8\"" > /etc/locale.conf && \
+    echo -e 'LANG="ru_RU.UTF-8"\nSUPPORTED="ru_RU.UTF-8:ru_RU:ru"\nSYSFONT="latarcyrheb-sun16"' > /etc/sysconfig/i18n && \
+    ln -sf /usr/share/zoneinfo/Europe/Moscow /etc/localtime && \
+#Create user
+    groupadd -r -g 900 work-user && \
+    useradd -r -m -u 900 -g 900 work-user && \
+#Add ssh keys to user
+    mkdir -p ${USER_HOME}/.ssh && \
+    cp -f ${TEMP_DIR}/id_rsa ${USER_HOME}/.ssh/id_rsa && \
+    cp -f ${TEMP_DIR}/id_rsa.pub ${USER_HOME}/.ssh/id_rsa.pub && \
+    cp -f ${TEMP_DIR}/known_hosts ${USER_HOME}/.ssh/known_hosts && \
+    chown -R work-user:work-user ${USER_HOME}/.ssh && \
+    chmod 700 ${USER_HOME}/.ssh && \
+    chmod 644 ${USER_HOME}/.ssh/* && \
+    chmod 600 ${USER_HOME}/.ssh/id_rsa && \
+#Install utilites
+    yum -y install unzip mc curl wget && \
+#Install OpenJDK 8
+    yum install -y java-1.8.0-openjdk java-1.8.0-openjdk-devel java-1.6.0-openjdk java-1.6.0-openjdk-devel and && \
+#Install git
+    yum -y install git && \
+    cp -f ${TEMP_DIR}/.gitconfig ${USER_HOME}/.gitconfig && \
+#Install bamboo-agent
+    chown -R work-user:work-user /opt && \
+    chmod -R 777 /opt && \
+    echo "system.jdk.JDK\ 8=${JAVA_HOME}" >> /opt/bamboo-agent/bin/bamboo-capabilities.properties && \
+#Clean all cache
+    yum clean all && rm -rf /var/cache/yum/ && \
+    rm -rf ${TEMP_DIR}
+ENV LC_ALL="ru_RU.UTF-8" \
+    LANG="ru_RU.UTF-8" \
+    LANGUAGE="ru_RU.UTF-8"
 
-ENV ANT_HOME /opt/ant
-ENV PATH ${PATH}:/opt/ant/bin
-
-# Oracle Java6 JDK-1.6.0_45-b06
-ENV JAVA_VERSION_MAJOR=6
-ENV JAVA_VERSION_MINOR=45
-ENV JAVA_VERSION_BUILD=b06
-
-
-ENV JAVA_HOME /opt/java
-ENV PATH $JAVA_HOME/bin:$PATH
-
-RUN mkdir /tmp/java1.6.0_45
-WORKDIR /tmp/java1.6.0_45
-
-COPY ./jdk-6u45-linux-x64.bin .
-RUN chmod +x jdk-${JAVA_VERSION_MAJOR}u${JAVA_VERSION_MINOR}-linux-x64.bin \
- && ./jdk-${JAVA_VERSION_MAJOR}u${JAVA_VERSION_MINOR}-linux-x64.bin \
- && rm jdk-${JAVA_VERSION_MAJOR}u${JAVA_VERSION_MINOR}-linux-x64.bin \
- && mv jdk1.${JAVA_VERSION_MAJOR}.0_${JAVA_VERSION_MINOR} /opt/oracle-jdk-1.${JAVA_VERSION_MAJOR}.0_${JAVA_VERSION_MINOR} \
- && ln -s /opt/oracle-jdk-1.${JAVA_VERSION_MAJOR}.0_${JAVA_VERSION_MINOR} /opt/java
+USER work-user
+WORKDIR /opt
+CMD ["/opt/bamboo-agent.sh"]
